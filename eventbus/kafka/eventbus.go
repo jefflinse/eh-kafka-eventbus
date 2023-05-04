@@ -81,8 +81,11 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		}
 	}
 
-	b.client = &kafka.Client{
-		Addr: kafka.TCP(addrSplit...),
+	// Use a default Kafka client if none was provided.
+	if b.client == nil {
+		b.client = &kafka.Client{
+			Addr: kafka.TCP(addrSplit...),
+		}
 	}
 
 	// Get or create the topic.
@@ -183,6 +186,17 @@ type Option func(*EventBus) error
 func WithAutoCreateTopic(autoCreate bool) Option {
 	return func(b *EventBus) error {
 		b.autoCreateTopic = autoCreate
+		return nil
+	}
+}
+
+// WithClient specifies a specific Kafka client to use when
+// creating or fetching topics.
+//
+// Defaults to: true
+func WithClient(client *kafka.Client) Option {
+	return func(b *EventBus) error {
+		b.client = client
 		return nil
 	}
 }
