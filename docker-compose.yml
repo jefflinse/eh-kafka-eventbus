@@ -1,0 +1,41 @@
+version: "3.4"
+
+volumes:
+  mongodb:
+
+services:
+
+  eventhorizon-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_ADDR: kafka:9092
+    command: [-c, make test_integration]
+
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    ports:
+      - 2181:2181
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+
+  kafka:
+    image: wurstmeister/kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - 9093:9093
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
