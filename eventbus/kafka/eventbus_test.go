@@ -154,30 +154,30 @@ func TestWithAutoCreateTopic(t *testing.T) {
 	}
 }
 
-func TestWithClient(t *testing.T) {
+func TestWithDialer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 
 	testCases := map[string]struct {
-		client *kafka.Client
+		dialer *kafka.Dialer
 	}{
 		"no client": {nil},
-		"custom client": {&kafka.Client{
-			Addr: kafka.TCP("custom.addr"),
+		"custom client": {&kafka.Dialer{
+			ClientID: "custom-dialer-client-id",
 		}},
 	}
 
 	for desc, tc := range testCases {
 		t.Run(desc, func(t *testing.T) {
-			eb, _, err := newTestEventBus("", WithClient(tc.client))
+			eb, _, err := newTestEventBus("", WithDialer(tc.dialer))
 			if err != nil {
 				t.Fatalf("expected no error, got: %s", err.Error())
 			}
 
 			underlyingEb := eb.(*EventBus)
-			if want, got := tc.client.Addr.String(), underlyingEb.client.Addr.String(); want != got {
-				t.Fatalf("expected client addr to be %s, got: %s", want, got)
+			if want, got := tc.dialer.ClientID, underlyingEb.dialer.ClientID; want != got {
+				t.Fatalf("expected client ID in dialer to be %s, got: %s", want, got)
 			}
 		})
 	}

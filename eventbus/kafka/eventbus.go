@@ -39,6 +39,7 @@ type EventBus struct {
 	topic           string
 	topicPartitions int
 	startOffset     int64
+	dialer          *kafka.Dialer
 	client          *kafka.Client
 	writer          *kafka.Writer
 	registered      map[eh.EventHandlerType]struct{}
@@ -63,6 +64,7 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		topic:           appID + "_events",
 		topicPartitions: 5,
 		startOffset:     kafka.LastOffset, // Default: Don't read old messages.
+		dialer:          nil,
 		registered:      map[eh.EventHandlerType]struct{}{},
 		errCh:           make(chan error, 100),
 		cctx:            ctx,
@@ -81,10 +83,17 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		}
 	}
 
-	// Use a default Kafka client if none was provided.
-	if b.client == nil {
-		b.client = &kafka.Client{
-			Addr: kafka.TCP(addrSplit...),
+	// Use the default Kafka dialer if none was provided.
+	b.client = &kafka.Client{
+		Addr:      kafka.TCP(addrSplit...),
+		Transport: kafka.DefaultTransport,
+	}
+
+	if b.dialer != nil {
+		b.client.Transport = &kafka.Transport{
+			DialTimeout: b.dialer.Timeout,
+			SASL:        b.dialer.SASLMechanism,
+			TLS:         b.dialer.TLS,
 		}
 	}
 
@@ -103,6 +112,14 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		BatchSize:    1,                // Write every event to the bus without delay.
 		RequiredAcks: kafka.RequireOne, // Stronger consistency.
 		Balancer:     &kafka.Hash{},    // Hash by aggregate ID.
+	}
+
+	if b.dialer != nil {
+		b.writer.Transport = &kafka.Transport{
+			DialTimeout: b.dialer.Timeout,
+			SASL:        b.dialer.SASLMechanism,
+			TLS:         b.dialer.TLS,
+		}
 	}
 
 	return b, nil
@@ -190,13 +207,13 @@ func WithAutoCreateTopic(autoCreate bool) Option {
 	}
 }
 
-// WithClient specifies a specific Kafka client to use when
-// creating or fetching topics.
+// WithDialer specifies a Kafka dialer to use when creating
+// clients, readers, and writers.
 //
-// Defaults to: true
-func WithClient(client *kafka.Client) Option {
+// Defaults to: kafka.DefaultDialer
+func WithDialer(dialer *kafka.Dialer) Option {
 	return func(b *EventBus) error {
-		b.client = client
+		b.dialer = dialer
 		return nil
 	}
 }
@@ -310,14 +327,20 @@ func (b *EventBus) AddHandler(ctx context.Context, m eh.EventMatcher, h eh.Event
 	// Get or create the subscription.
 	groupID := b.appID + "_" + h.HandlerType().String()
 
-	r := kafka.NewReader(kafka.ReaderConfig{
+	readerConfig := kafka.ReaderConfig{
 		Brokers:               b.addresses,
 		Topic:                 b.topic,
 		GroupID:               groupID,     // Send messages to only one subscriber per group.
 		MaxWait:               time.Second, // Allow to exit readloop in max 1s.
 		WatchPartitionChanges: true,
 		StartOffset:           b.startOffset,
-	})
+	}
+
+	if b.dialer != nil {
+		readerConfig.Dialer = b.dialer
+	}
+
+	r := kafka.NewReader(readerConfig)
 
 	req := &kafka.ListGroupsRequest{
 		Addr: b.client.Addr,
