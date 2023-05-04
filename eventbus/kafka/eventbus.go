@@ -83,12 +83,12 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		}
 	}
 
-	// Use the default Kafka dialer if none was provided.
 	b.client = &kafka.Client{
 		Addr:      kafka.TCP(addrSplit...),
 		Transport: kafka.DefaultTransport,
 	}
 
+	// If a dialer was configured, use its timeout, SASL auth, and TLS in the client transport.
 	if b.dialer != nil {
 		b.client.Transport = &kafka.Transport{
 			DialTimeout: b.dialer.Timeout,
@@ -114,6 +114,7 @@ func NewEventBus(addressList, appID string, options ...Option) (*EventBus, error
 		Balancer:     &kafka.Hash{},    // Hash by aggregate ID.
 	}
 
+	// If a dialer was configured, use its timeout, SASL auth, and TLS in the writer transport.
 	if b.dialer != nil {
 		b.writer.Transport = &kafka.Transport{
 			DialTimeout: b.dialer.Timeout,
@@ -336,6 +337,7 @@ func (b *EventBus) AddHandler(ctx context.Context, m eh.EventMatcher, h eh.Event
 		StartOffset:           b.startOffset,
 	}
 
+	// Use a customer dialer if one was configured.
 	if b.dialer != nil {
 		readerConfig.Dialer = b.dialer
 	}
